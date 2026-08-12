@@ -54,40 +54,62 @@ export function describeDose(
   return `${regimen.doseValue} mg/kg × ${res.kg} kg = ${res.mg} mg`;
 }
 
+/** Express a number of days as weeks + days, e.g. 45 -> "6 weeks 3 days". */
+export function formatWeeksDays(days: number): string {
+  const a = Math.abs(days);
+  const w = Math.floor(a / 7);
+  const d = a % 7;
+  const wk = w > 0 ? `${w} week${w === 1 ? "" : "s"}` : "";
+  const dy = d > 0 ? `${d} day${d === 1 ? "" : "s"}` : "";
+  if (w === 0 && d === 0) return "0 days";
+  return [wk, dy].filter(Boolean).join(" ");
+}
+
 export interface DueStatus {
   due: boolean;
   dueDate: string | null; // ISO date the next infusion is due, if computable
   daysUntilDue: number | null; // negative = overdue
   label: string;
+  daysSinceLast: number | null; // days from last infusion to asOf
+  sinceLabel: string; // "6 weeks 3 days since last infusion"
 }
 
 /**
  * Determine whether an infusion is due, based on the last infusion date and the
- * every-N-weeks frequency. `asOf` defaults to the encounter/appointment date.
+ * every-N-weeks frequency, and how long it has been since the last infusion —
+ * both expressed in weeks + days. `asOf` is the encounter/appointment date.
  */
 export function computeDueStatus(
   lastInfusionDate: string | undefined,
   frequencyWeeks: number | undefined,
   asOf: string
 ): DueStatus {
-  if (!lastInfusionDate || !frequencyWeeks) {
-    return { due: false, dueDate: null, daysUntilDue: null, label: "No schedule on file" };
-  }
-  const last = parseISODate(lastInfusionDate);
   const ref = parseISODate(asOf);
-  if (!last || !ref) {
-    return { due: false, dueDate: null, daysUntilDue: null, label: "Invalid date" };
+  const last = lastInfusionDate ? parseISODate(lastInfusionDate) : null;
+
+  // Elapsed since last infusion is useful even without a frequency on file.
+  let daysSinceLast: number | null = null;
+  let sinceLabel = "";
+  if (last && ref) {
+    daysSinceLast = Math.round((ref.getTime() - last.getTime()) / 86400000);
+    if (daysSinceLast >= 0) sinceLabel = `${formatWeeksDays(daysSinceLast)} since last infusion`;
   }
+
+  if (!lastInfusionDate || !frequencyWeeks || !ref || !last) {
+    const label = lastInfusionDate && !frequencyWeeks ? "No frequency on file" : "No schedule on file";
+    return { due: false, dueDate: null, daysUntilDue: null, label, daysSinceLast, sinceLabel };
+  }
+
   const dueDate = new Date(last);
   dueDate.setDate(dueDate.getDate() + frequencyWeeks * 7);
   const daysUntilDue = Math.round((dueDate.getTime() - ref.getTime()) / 86400000);
   const due = daysUntilDue <= 0;
   const dueISO = toISODate(dueDate);
   let label: string;
-  if (daysUntilDue < 0) label = `Overdue by ${Math.abs(daysUntilDue)} day(s)`;
+  if (daysUntilDue < 0) label = `Overdue by ${formatWeeksDays(daysUntilDue)}`;
   else if (daysUntilDue === 0) label = "Due today";
-  else label = `Due in ${daysUntilDue} day(s)`;
-  return { due, dueDate: dueISO, daysUntilDue, label };
+  else label = `Due in ${formatWeeksDays(daysUntilDue)}`;
+  return { due, dueDate: dueISO, daysUntilDue, label, daysSinceLast, sinceLabel };
 }
 
 // --- Small date helpers that avoid timezone surprises with YYYY-MM-DD ---

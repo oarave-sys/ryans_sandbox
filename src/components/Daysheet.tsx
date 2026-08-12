@@ -24,8 +24,8 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
       if (!live || !e) return;
       setEnc(e);
       const [p, r] = await Promise.all([
-        db.patients.get(e.patientId),
-        db.regimens.get(e.regimenId),
+        e.patientId ? db.patients.get(e.patientId) : Promise.resolve(undefined),
+        e.regimenId ? db.regimens.get(e.regimenId) : Promise.resolve(undefined),
       ]);
       setPatient(p ?? null);
       setRegimen(r ?? null);
@@ -60,7 +60,11 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
     );
   }
 
-  const patientName = patient ? `${patient.lastName}, ${patient.firstName}` : "Unknown patient";
+  const patientName = patient ? `${patient.lastName}, ${patient.firstName}` : "New daysheet";
+  const refFirstDose = enc.firstDoseItems ?? regimen?.firstDoseItems ?? [];
+  const refEducation = enc.educationPoints ?? regimen?.educationPoints ?? [];
+  const refHold = enc.holdCriteria ?? regimen?.holdCriteria ?? [];
+  const injectionSiteOptions = regimen?.injectionSites ?? enc.injectionSites ?? ["R Abd", "L Abd", "R thigh", "L thigh"];
 
   function toggleLab(lab: string) {
     const has = enc!.labsOrdered.includes(lab);
@@ -158,6 +162,9 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
               <label className="field">DX
                 <input type="text" value={enc.diagnosis ?? ""} onChange={(e) => update({ diagnosis: e.target.value })} />
               </label>
+              <label className="field">DOB
+                <input type="date" value={enc.dob ?? ""} onChange={(e) => update({ dob: e.target.value })} />
+              </label>
             </div>
             <div className="grid cols-4" style={{ marginTop: 12 }}>
               <label className="field">MD visit needed?
@@ -193,7 +200,12 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
                 <input type="date" value={enc.lastInfusionDate ?? ""} onChange={(e) => update({ lastInfusionDate: e.target.value })} />
               </label>
               <div className="field">Schedule
-                {due && <div className={`dueflag ${due.due ? (due.daysUntilDue !== null && due.daysUntilDue < 0 ? "overdue" : "due") : "ok"}`}>{due.label}{due.dueDate ? ` · next due ${formatDateHuman(due.dueDate)}` : ""}</div>}
+                {due && (
+                  <div className={`dueflag ${due.due ? (due.daysUntilDue !== null && due.daysUntilDue < 0 ? "overdue" : "due") : "ok"}`}>
+                    {due.label}{due.dueDate ? ` · next due ${formatDateHuman(due.dueDate)}` : ""}
+                    {due.sinceLabel && <div className="small" style={{ fontWeight: 400, marginTop: 2 }}>{due.sinceLabel}</div>}
+                  </div>
+                )}
               </div>
             </div>
             <div style={{ marginTop: 14 }}>
@@ -314,7 +326,7 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
               <label className="field">Injection site
                 <select value={enc.injectionSite ?? ""} onChange={(e) => update({ injectionSite: e.target.value })}>
                   <option value="">—</option>
-                  {(regimen?.injectionSites ?? ["R Abd", "L Abd", "R thigh", "L thigh"]).map((s) => <option key={s} value={s}>{s}</option>)}
+                  {injectionSiteOptions.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </label>
             </div>
@@ -445,23 +457,23 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
             </div>
           )}
 
-          {/* --- Reference text carried by the regimen (education / hold / 1st dose) --- */}
-          {regimen && ((regimen.firstDoseItems?.length ?? 0) + (regimen.educationPoints?.length ?? 0) + (regimen.holdCriteria?.length ?? 0) > 0) && (
+          {/* --- Reference text (education / hold / 1st dose) --- */}
+          {(refFirstDose.length + refEducation.length + refHold.length) > 0 && (
             <div className="sheet-section">
               <h3>Reference</h3>
-              {(regimen.firstDoseItems?.length ?? 0) > 0 && (
+              {refFirstDose.length > 0 && (
                 <div className="refblock"><b>1st dose — review / explain</b>
-                  <ul>{regimen.firstDoseItems!.map((t, i) => <li key={i}>{t}</li>)}</ul>
+                  <ul>{refFirstDose.map((t, i) => <li key={i}>{t}</li>)}</ul>
                 </div>
               )}
-              {(regimen.educationPoints?.length ?? 0) > 0 && (
+              {refEducation.length > 0 && (
                 <div className="refblock"><b>Ongoing education</b>
-                  <ul>{regimen.educationPoints!.map((t, i) => <li key={i}>{t}</li>)}</ul>
+                  <ul>{refEducation.map((t, i) => <li key={i}>{t}</li>)}</ul>
                 </div>
               )}
-              {(regimen.holdCriteria?.length ?? 0) > 0 && (
+              {refHold.length > 0 && (
                 <div className="refblock"><b>Hold if</b>
-                  <ul>{regimen.holdCriteria!.map((t, i) => <li key={i}>{t}</li>)}</ul>
+                  <ul>{refHold.map((t, i) => <li key={i}>{t}</li>)}</ul>
                 </div>
               )}
             </div>

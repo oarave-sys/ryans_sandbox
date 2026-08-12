@@ -173,6 +173,7 @@ export interface Encounter {
   medicationName: string;
   providerName?: string;
   diagnosis?: string;
+  dob?: string; // patient DOB snapshot; left blank on imported sheets
 
   // --- Scheduling / visit coordination (top of the sheet) ---
   mdVisitNeeded: YesNo;
@@ -212,6 +213,12 @@ export interface Encounter {
 
   // --- SubQ injection (used instead of IV access when route is SubQ) ---
   injectionSite?: string;
+  injectionSites?: string[]; // snapshot of site options (for import-only sheets)
+
+  // --- Reference text snapshot (so imported sheets need no stored regimen) ---
+  firstDoseItems?: string[];
+  educationPoints?: string[];
+  holdCriteria?: string[];
 
   // --- Post-dose observation (Krystexxa, Ilaris, SubQ agents) ---
   observationMinutes?: string; // snapshot of the required window

@@ -90,7 +90,7 @@ export function Roster({ onOpen }: { onOpen: (encounterId: string) => void }) {
                   <div className="enc-time">{enc.apptTime || "—"}</div>
                   <div className="enc-main">
                     <div className="name">
-                      {patient ? `${patient.lastName}, ${patient.firstName}` : "Unknown patient"}
+                      {patient ? `${patient.lastName}, ${patient.firstName}` : "Unassigned (blank patient)"}
                     </div>
                     <div className="sub">
                       {enc.medicationName}

@@ -21,14 +21,15 @@ export function DaysheetPrint({
   due: DueStatus | null;
   regimen?: Regimen | null;
 }) {
-  const name = patient ? `${patient.lastName}, ${patient.firstName}` : "Unknown patient";
+  const name = patient ? `${patient.lastName}, ${patient.firstName}` : "";
+  const dob = patient?.dob ?? enc.dob ?? "";
   const labs = [...enc.labsOrdered];
   if (enc.labsOther) labs.push(enc.labsOther);
   const isSubQ = (enc.route ?? regimen?.route) === "SubQ";
   const gates = enc.gateResults ?? [];
-  const firstDoseItems = regimen?.firstDoseItems ?? [];
-  const educationPoints = regimen?.educationPoints ?? [];
-  const holdCriteria = regimen?.holdCriteria ?? [];
+  const firstDoseItems = enc.firstDoseItems ?? regimen?.firstDoseItems ?? [];
+  const educationPoints = enc.educationPoints ?? regimen?.educationPoints ?? [];
+  const holdCriteria = enc.holdCriteria ?? regimen?.holdCriteria ?? [];
 
   return (
     <div className="print-only print-sheet">
@@ -45,8 +46,9 @@ export function DaysheetPrint({
 
       <table>
         <tbody>
-          <tr><td className="ps-label">Patient</td><td>{name}</td><td className="ps-label">MD</td><td>{enc.providerName ?? ""}</td></tr>
-          <tr><td className="ps-label">DX</td><td>{enc.diagnosis ?? ""}</td><td className="ps-label">Medication</td><td>{enc.medicationName}</td></tr>
+          <tr><td className="ps-label">Patient</td><td>{blank(name, 200)}</td><td className="ps-label">DOB</td><td>{blank(dob, 110)}</td></tr>
+          <tr><td className="ps-label">MD</td><td>{enc.providerName ?? ""}</td><td className="ps-label">DX</td><td>{blank(enc.diagnosis, 120)}</td></tr>
+          <tr><td className="ps-label">Medication</td><td colSpan={3}>{enc.medicationName}</td></tr>
           <tr>
             <td className="ps-label">MD visit needed?</td>
             <td>{chk(enc.mdVisitNeeded === "yes")} Yes&nbsp;&nbsp;{chk(enc.mdVisitNeeded === "no")} No&nbsp;&nbsp;{chk(!!enc.mdVisitSameDay)} Same day {enc.mdVisitTime ? `@ ${enc.mdVisitTime}` : ""}</td>
