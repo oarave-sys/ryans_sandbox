@@ -4,7 +4,20 @@
 // sheet that is already ~80% filled in.
 
 import { newId } from "./db";
-import type { Encounter, Patient, Provider, Regimen } from "./types";
+import type { Encounter, GateResult, Patient, Provider, Regimen } from "./types";
+import type { MedTemplate } from "./seed";
+import { templateToRegimenFields } from "./seed";
+
+/** Snapshot a regimen's proceed gates into blank day-of results. */
+function gatesToResults(regimen: Regimen): GateResult[] | undefined {
+  if (!regimen.gates?.length) return undefined;
+  return regimen.gates.map((g) => ({
+    label: g.label,
+    requiresValue: g.requiresValue,
+    requiresMdOk: g.requiresMdOk,
+    cleared: false,
+  }));
+}
 
 export function generateEncounter(
   patient: Patient,
@@ -30,10 +43,31 @@ export function generateEncounter(
     labsOrdered: [...regimen.standingLabs],
     weightUnit: "lb",
     doseEveryWeeks: regimen.frequencyWeeks,
-    premedsGiven: regimen.premeds.map((p) => ({ name: p.name, dose: p.dose, given: false })),
+    // --- snapshot of drug-specific blocks ---
+    route: regimen.route,
+    scheduleNote: regimen.scheduleNote,
+    firstDoseNote: regimen.firstDoseNote,
+    maxDosePerPa: regimen.maxDosePerPa,
+    gateResults: gatesToResults(regimen),
+    observationMinutes: regimen.observationMinutes,
+    tracksBoneHealth: regimen.tracksBoneHealth,
+    premedsGiven: regimen.premeds.map((p) => ({ name: p.name, dose: p.dose, timing: p.timing, given: false })),
     iv: { side: "", location: "", gauge: "", failed: false },
     lots: [{ lotNo: "", exp: "", vials: undefined }],
     status: "scheduled",
+    createdAt: ts,
+    updatedAt: ts,
+  };
+}
+
+/** Build a regimen for a patient from a bundled medication template. */
+export function regimenFromTemplate(template: MedTemplate, patientId: string): Regimen {
+  const ts = Date.now();
+  return {
+    id: newId("reg"),
+    patientId,
+    ...templateToRegimenFields(template),
+    active: true,
     createdAt: ts,
     updatedAt: ts,
   };

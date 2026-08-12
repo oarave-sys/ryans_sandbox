@@ -191,5 +191,11 @@ export function computePrepStatus(e: Encounter, auth: AuthStatus): PrepStatus {
   const due = computeDueStatus(e.lastInfusionDate, e.doseEveryWeeks, e.date);
   if (due.daysUntilDue !== null && due.daysUntilDue < 0) warnings.push(due.label);
 
+  // Drug-specific proceed gates (CrCL > 35, uric acid + MD OK, G6PD, etc.).
+  // A visit is not ready until every gate the drug requires has been cleared.
+  for (const g of e.gateResults ?? []) {
+    if (!g.cleared) blockers.push(`Proceed gate: ${g.label}`);
+  }
+
   return { ready: blockers.length === 0, blockers, warnings };
 }

@@ -5,6 +5,37 @@ import type { MedTemplate } from "../seed";
 
 const COMMON_LABS = ["CBC", "CRP", "ESR", "CMP", "Lipid panel", "TB / QuantiFERON", "Hepatitis panel"];
 
+/** The reusable-block fields a template carries beyond the base dosing info.
+ *  They are edited elsewhere/left as-is here, but must survive a save so a
+ *  template's gates, education, and hold text are not lost. */
+type RegimenExtras = Pick<
+  Regimen,
+  "scheduleNote" | "firstDoseNote" | "maxDosePerPa" | "gates" | "injectionSites" |
+  "observationMinutes" | "firstDoseItems" | "educationPoints" | "holdCriteria" | "tracksBoneHealth"
+>;
+
+function pickExtras(r: Partial<Regimen> | null | undefined): RegimenExtras {
+  if (!r) return {};
+  return {
+    scheduleNote: r.scheduleNote, firstDoseNote: r.firstDoseNote, maxDosePerPa: r.maxDosePerPa,
+    gates: r.gates, injectionSites: r.injectionSites, observationMinutes: r.observationMinutes,
+    firstDoseItems: r.firstDoseItems, educationPoints: r.educationPoints,
+    holdCriteria: r.holdCriteria, tracksBoneHealth: r.tracksBoneHealth,
+  };
+}
+
+function extrasSummary(x: RegimenExtras): string[] {
+  const bits: string[] = [];
+  if (x.gates?.length) bits.push(`${x.gates.length} proceed gate${x.gates.length > 1 ? "s" : ""}`);
+  if (x.injectionSites?.length) bits.push("SubQ injection sites");
+  if (x.observationMinutes !== undefined) bits.push("observation window");
+  if (x.tracksBoneHealth) bits.push("bone-health tracking");
+  if (x.firstDoseItems?.length) bits.push("1st-dose items");
+  if (x.educationPoints?.length) bits.push("education points");
+  if (x.holdCriteria?.length) bits.push("hold criteria");
+  return bits;
+}
+
 export function RegimenForm({
   regimen, patientId, templates, templateToFields, onSave, onCancel,
 }: {
@@ -32,6 +63,7 @@ export function RegimenForm({
   );
   const [notes, setNotes] = useState(regimen?.notes ?? "");
   const [active, setActive] = useState(regimen?.active ?? true);
+  const [extras, setExtras] = useState<RegimenExtras>(() => pickExtras(regimen));
 
   function applyTemplate(name: string) {
     const t = templates.find((x) => x.medicationName === name);
@@ -39,13 +71,14 @@ export function RegimenForm({
     const f = templateToFields(t);
     setMedicationName(f.medicationName);
     setDoseMode(f.doseMode);
-    setDoseValue(String(f.doseValue));
+    setDoseValue(f.doseValue ? String(f.doseValue) : "");
     setDoseUnit(f.doseUnit);
     setFrequencyWeeks(String(f.frequencyWeeks));
     setRoute(f.route ?? "IV");
     setAdministrationNote(f.administrationNote ?? "");
     setPremeds(f.premeds.map((p) => ({ ...p })));
     setStandingLabs([...f.standingLabs]);
+    setExtras(pickExtras(f));
   }
 
   function toggleLab(lab: string) {
@@ -69,6 +102,8 @@ export function RegimenForm({
       frequencyWeeks: Number(frequencyWeeks) || 0,
       route: route.trim() || undefined,
       administrationNote: administrationNote.trim() || undefined,
+      ...extras,
+      maxDosePerPa: extras.maxDosePerPa,
       premeds: premeds.filter((p) => p.name.trim()).map((p) => ({ ...p, name: p.name.trim() })),
       standingLabs,
       lastInfusionDate: lastInfusionDate || undefined,
@@ -135,6 +170,21 @@ export function RegimenForm({
           <label className="field">Administration note
             <input type="text" value={administrationNote} onChange={(e) => setAdministrationNote(e.target.value)} placeholder="e.g. rapid infusion over 1 hr" />
           </label>
+
+          <div className="grid cols-2">
+            <label className="field">Schedule note
+              <input type="text" value={extras.scheduleNote ?? ""} onChange={(e) => setExtras((x) => ({ ...x, scheduleNote: e.target.value || undefined }))} placeholder="e.g. at weeks 0, 2, 4 then every 4 weeks" />
+            </label>
+            <label className="field">MAX dose per PA
+              <input type="text" value={extras.maxDosePerPa ?? ""} onChange={(e) => setExtras((x) => ({ ...x, maxDosePerPa: e.target.value }))} placeholder="leave blank until confirmed" />
+            </label>
+          </div>
+
+          {extrasSummary(extras).length > 0 && (
+            <p className="muted small" style={{ margin: 0 }}>
+              This template also carries: {extrasSummary(extras).join(" · ")}. These fill onto each daysheet; edit the values on the sheet or in Notes.
+            </p>
+          )}
 
           <div className="field">Standing premeds
             {premeds.map((p, i) => (

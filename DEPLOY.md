@@ -167,3 +167,21 @@ docker compose down -v         # stop AND DELETE the database volume (careful!)
 - [ ] Server restricted to the clinic LAN/VPN ⬜ you configure
 - [ ] Strong secrets in `.env`, file kept private ⬜ you configure
 - [ ] Compliance owner has reviewed and signed off ⬜ clinic
+
+## Optional: on-device schedule OCR (Import Day → upload image)
+
+The **Import Day** screen can read a photo/screenshot of the day's schedule.
+OCR runs entirely in the browser (tesseract.js) — the image never leaves the
+clinic network, so it does not change the PHI/BAA posture.
+
+By default tesseract.js fetches its worker, WASM core, and English language data
+from a public CDN. A locked-down clinic network will block that. For a fully
+offline install, self-host those assets and point the app at them:
+
+1. Serve `tesseract.js-core` (WASM), the tesseract worker script, and
+   `eng.traineddata.gz` from your own server (e.g. `/ocr/`).
+2. Set `workerPath`, `corePath`, and `langPath` in `src/schedule.ts`
+   (`createWorker` options) to those local URLs, then rebuild.
+
+Until that is configured, use the **Paste text** tab instead — it needs no
+network and is the more reliable input in any case.
