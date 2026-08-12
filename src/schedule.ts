@@ -84,21 +84,31 @@ export function parseSchedule(text: string): ScheduleRow[] {
  * Run on-device OCR over an uploaded image and return the recognized text.
  *
  * Uses tesseract.js, which runs entirely in the browser — no image leaves the
- * clinic network, consistent with the self-hosted / no-BAA design. For a fully
- * offline/self-hosted deployment the worker, core, and language assets must be
- * served locally (see DEPLOY.md); by default tesseract.js fetches them from a
- * CDN, which a locked-down clinic network will block.
+ * clinic network, consistent with the self-hosted / no-BAA design.
+ *
+ * When built with VITE_OCR_ASSETS set (e.g. "/ocr/"), the worker, WASM core, and
+ * language data are loaded from that locally-served path so OCR works fully
+ * offline behind a locked-down clinic network — run `npm run fetch:ocr` to
+ * populate it (see DEPLOY.md). When the var is unset, tesseract.js falls back to
+ * its default CDN, which is convenient in development but blocked in the clinic.
  */
 export async function ocrImage(
   file: File | Blob,
   onProgress?: (fraction: number) => void
 ): Promise<string> {
   const { createWorker } = await import("tesseract.js");
-  const worker = await createWorker("eng", undefined, {
+  const base = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_OCR_ASSETS;
+  const options: Record<string, unknown> = {
     logger: (m: { status: string; progress: number }) => {
       if (m.status === "recognizing text" && onProgress) onProgress(m.progress);
     },
-  });
+  };
+  if (base) {
+    options.workerPath = `${base}worker.min.js`;
+    options.corePath = base; // directory — tesseract picks the right core variant
+    options.langPath = base; // serves eng.traineddata.gz
+  }
+  const worker = await createWorker("eng", 1, options);
   try {
     const { data } = await worker.recognize(file);
     return data.text;

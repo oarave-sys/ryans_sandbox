@@ -175,13 +175,20 @@ OCR runs entirely in the browser (tesseract.js) — the image never leaves the
 clinic network, so it does not change the PHI/BAA posture.
 
 By default tesseract.js fetches its worker, WASM core, and English language data
-from a public CDN. A locked-down clinic network will block that. For a fully
-offline install, self-host those assets and point the app at them:
+from a public CDN, which a locked-down clinic network will block. To run OCR
+fully offline, bundle those assets locally and build with them:
 
-1. Serve `tesseract.js-core` (WASM), the tesseract worker script, and
-   `eng.traineddata.gz` from your own server (e.g. `/ocr/`).
-2. Set `workerPath`, `corePath`, and `langPath` in `src/schedule.ts`
-   (`createWorker` options) to those local URLs, then rebuild.
+```bash
+npm run fetch:ocr                 # populates public/ocr/ (worker, WASM core, lang data)
+VITE_OCR_ASSETS=/ocr/ npm run build
+```
 
-Until that is configured, use the **Paste text** tab instead — it needs no
-network and is the more reliable input in any case.
+`fetch:ocr` copies the worker and WASM core out of `node_modules` and downloads
+the English language model (tessdata_fast, ~4 MB). On a network that proxies
+outbound HTTPS, either set `OCR_TRAINEDDATA_URL` to a reachable mirror or fetch
+`eng.traineddata` yourself and pass it via `OCR_TRAINEDDATA_FILE=/path/to/eng.traineddata`.
+The assets (~46 MB) are git-ignored — they're fetched at build time, not committed.
+
+When `VITE_OCR_ASSETS` is unset, the app falls back to the CDN (fine for
+development). Either way, the **Paste text** tab always works with no network and
+is the most reliable input.

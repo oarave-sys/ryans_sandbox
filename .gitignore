@@ -8,3 +8,6 @@ dist-ssr
 .vite
 
 *.tsbuildinfo
+
+# On-device OCR assets are fetched at build time, not committed (see npm run fetch:ocr)
+public/ocr/
