@@ -1,0 +1,43 @@
+# Self-hosted deployment for the infusion daysheets app.
+# Two containers: the app (serves the UI + API) and a PostgreSQL database.
+# Run:  docker compose up -d
+# See DEPLOY.md for the full step-by-step runbook.
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: daysheets
+      POSTGRES_USER: daysheets
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    # Not published to the host — only the app container can reach it.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U daysheets -d daysheets"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://daysheets:${POSTGRES_PASSWORD}@db:5432/daysheets
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
+      SESSION_MINUTES: ${SESSION_MINUTES:-30}
+      # Set to 1 when a reverse proxy terminates HTTPS in front of the app.
+      SECURE_COOKIES: ${SECURE_COOKIES:-0}
+      TRUST_PROXY: ${TRUST_PROXY:-}
+    ports:
+      # Expose on localhost only; put a TLS reverse proxy in front (see DEPLOY.md).
+      - "127.0.0.1:8080:8080"
+
+volumes:
+  db-data:
