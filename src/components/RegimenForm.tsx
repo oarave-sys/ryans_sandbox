@@ -25,6 +25,11 @@ export function RegimenForm({
   const [premeds, setPremeds] = useState<PremedTemplate[]>(regimen?.premeds ?? []);
   const [standingLabs, setStandingLabs] = useState<string[]>(regimen?.standingLabs ?? ["CBC", "CMP"]);
   const [lastInfusionDate, setLastInfusionDate] = useState(regimen?.lastInfusionDate ?? "");
+  const [priorAuthNumber, setPriorAuthNumber] = useState(regimen?.priorAuthNumber ?? "");
+  const [priorAuthExpires, setPriorAuthExpires] = useState(regimen?.priorAuthExpires ?? "");
+  const [priorAuthDosesRemaining, setPriorAuthDosesRemaining] = useState<string>(
+    regimen?.priorAuthDosesRemaining !== undefined ? String(regimen.priorAuthDosesRemaining) : ""
+  );
   const [notes, setNotes] = useState(regimen?.notes ?? "");
   const [active, setActive] = useState(regimen?.active ?? true);
 
@@ -67,6 +72,9 @@ export function RegimenForm({
       premeds: premeds.filter((p) => p.name.trim()).map((p) => ({ ...p, name: p.name.trim() })),
       standingLabs,
       lastInfusionDate: lastInfusionDate || undefined,
+      priorAuthNumber: priorAuthNumber.trim() || undefined,
+      priorAuthExpires: priorAuthExpires || undefined,
+      priorAuthDosesRemaining: priorAuthDosesRemaining.trim() === "" ? undefined : Number(priorAuthDosesRemaining),
       notes: notes.trim() || undefined,
       active,
       createdAt: regimen?.createdAt ?? now,
@@ -161,6 +169,20 @@ export function RegimenForm({
                 <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Active regimen
               </span>
             </label>
+          </div>
+
+          <div className="field" style={{ gap: 8 }}>Prior authorization
+            <div className="grid cols-3">
+              <label className="field" style={{ fontWeight: 400 }}>Auth #
+                <input type="text" value={priorAuthNumber} onChange={(e) => setPriorAuthNumber(e.target.value)} />
+              </label>
+              <label className="field" style={{ fontWeight: 400 }}>Expires
+                <input type="date" value={priorAuthExpires} onChange={(e) => setPriorAuthExpires(e.target.value)} />
+              </label>
+              <label className="field" style={{ fontWeight: 400 }}>Doses remaining
+                <input type="number" value={priorAuthDosesRemaining} onChange={(e) => setPriorAuthDosesRemaining(e.target.value)} />
+              </label>
+            </div>
           </div>
 
           <label className="field">Notes

@@ -100,6 +100,12 @@ function weeksAgo(iso: string, weeks: number): string {
   return toISODate(d);
 }
 
+function daysAway(iso: string, days: number): string {
+  const d = parseISODate(iso)!;
+  d.setDate(d.getDate() + days);
+  return toISODate(d);
+}
+
 const now = Date.now();
 
 export async function seedIfEmpty(): Promise<void> {
@@ -136,24 +142,36 @@ export async function seedIfEmpty(): Promise<void> {
     {
       id: newId("reg"), patientId: patients[0].id, ...templateToRegimenFields(t0),
       lastInfusionDate: weeksAgo(today, 8), notes: "Tolerates rapid infusion well.",
+      priorAuthNumber: "AUTH-55021", priorAuthExpires: daysAway(today, 120), priorAuthDosesRemaining: 4,
       active: true, createdAt: now, updatedAt: now,
     },
     {
       id: newId("reg"), patientId: patients[1].id, ...templateToRegimenFields(t2),
-      lastInfusionDate: weeksAgo(today, 4), active: true, createdAt: now, updatedAt: now,
+      lastInfusionDate: weeksAgo(today, 4),
+      priorAuthNumber: "AUTH-55022", priorAuthExpires: daysAway(today, 18), priorAuthDosesRemaining: 2,
+      active: true, createdAt: now, updatedAt: now,
     },
     {
       id: newId("reg"), patientId: patients[2].id, ...templateToRegimenFields(t4),
       lastInfusionDate: weeksAgo(today, 5), notes: "Overdue — confirm labs before infusing.",
+      priorAuthNumber: "AUTH-55023", priorAuthExpires: daysAway(today, -3), priorAuthDosesRemaining: 0,
       active: true, createdAt: now, updatedAt: now,
     },
   ];
 
-  // A couple of encounters already on today's roster to show the flow.
+  const tomorrow = daysAway(today, 1);
+
+  // Encounters on today's roster and tomorrow's prep worklist to show the flow.
   const encounters: Encounter[] = [
     makeScheduledEncounter(patients[0], regimens[0], drDoe.name, today, "09:00"),
     makeScheduledEncounter(patients[2], regimens[2], drDoe.name, today, "10:30"),
+    // Tomorrow — one ready, one blocked (expired auth), to demonstrate prep flags.
+    makeScheduledEncounter(patients[1], regimens[1], drRoe.name, tomorrow, "08:30"),
+    makeScheduledEncounter(patients[2], regimens[2], drDoe.name, tomorrow, "11:00"),
   ];
+  // Give the "ready" tomorrow patient a weight + completed prep so it shows green.
+  encounters[2].previousWeight = 168;
+  encounters[2].prep = { labsOnFile: true, orderVerified: true, authVerified: true };
 
   await db.transaction("rw", db.providers, db.patients, db.regimens, db.encounters, async () => {
     await db.providers.bulkAdd([drDoe, drRoe]);

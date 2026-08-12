@@ -63,10 +63,27 @@ export interface Regimen {
   premeds: PremedTemplate[];
   standingLabs: string[]; // e.g. ["CBC", "CRP", "ESR", "CMP"]
   lastInfusionDate?: string; // ISO date of the most recent completed infusion
+  // Prior authorization tracking — a common cause of day-of cancellations.
+  priorAuthNumber?: string;
+  priorAuthExpires?: string; // ISO date the authorization lapses
+  priorAuthDosesRemaining?: number; // doses left on the current authorization
   notes?: string;
   active: boolean;
   createdAt: number;
   updatedAt: number;
+}
+
+/**
+ * Day-before readiness checklist for a visit. These are the manual acknowledgment
+ * flags a nurse sets during prep; the rest of readiness (due status, auth expiry,
+ * weight on file) is computed from data. When labs/orders come from NextGen via
+ * an interface later, labsOnFile/orderVerified can be set automatically.
+ */
+export interface PrepChecklist {
+  labsOnFile: boolean; // required labs are resulted / on file
+  orderVerified: boolean; // a current, signed order exists
+  authVerified: boolean; // prior auth confirmed valid for this visit
+  note?: string;
 }
 
 export type YesNo = "yes" | "no" | "";
@@ -156,6 +173,9 @@ export interface Encounter {
   vitalsTime?: string;
   bp?: string;
   pulse?: string;
+
+  // Day-before readiness checklist (optional; absent on older records).
+  prep?: PrepChecklist;
 
   status: EncounterStatus;
   notes?: string;

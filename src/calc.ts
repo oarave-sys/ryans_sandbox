@@ -132,3 +132,64 @@ export function patientAge(dob?: string): number | null {
 export function isEncounterComplete(e: Encounter): boolean {
   return Boolean(e.startTime && e.stopTime && e.completedBy);
 }
+
+export interface AuthStatus {
+  state: "ok" | "expiring" | "expired" | "no_doses" | "none";
+  label: string;
+}
+
+/**
+ * Prior-authorization status for a regimen as of a given date. Expiring window
+ * is 30 days. Missing auth data returns "none" (unknown), not a blocker.
+ */
+export function computeAuthStatus(
+  expires: string | undefined,
+  dosesRemaining: number | undefined,
+  asOf: string
+): AuthStatus {
+  if (dosesRemaining !== undefined && dosesRemaining <= 0) {
+    return { state: "no_doses", label: "No auth doses remaining" };
+  }
+  if (!expires) {
+    return { state: "none", label: "No auth on file" };
+  }
+  const exp = parseISODate(expires);
+  const ref = parseISODate(asOf);
+  if (!exp || !ref) return { state: "none", label: "Auth date invalid" };
+  const days = Math.round((exp.getTime() - ref.getTime()) / 86400000);
+  if (days < 0) return { state: "expired", label: `Auth expired ${Math.abs(days)} day(s) ago` };
+  if (days <= 30) return { state: "expiring", label: `Auth expires in ${days} day(s)` };
+  return { state: "ok", label: `Auth valid through ${formatDateHuman(expires)}` };
+}
+
+export interface PrepStatus {
+  ready: boolean;
+  blockers: string[]; // must be resolved before infusing
+  warnings: string[]; // worth noting, not blocking
+}
+
+/**
+ * Combine the automatic signals (weight on file, infusion due, auth) with the
+ * manual prep checklist into a single readiness verdict for the worklist.
+ */
+export function computePrepStatus(e: Encounter, auth: AuthStatus): PrepStatus {
+  const blockers: string[] = [];
+  const warnings: string[] = [];
+
+  const hasWeight = (e.weight ?? e.previousWeight) !== undefined;
+  if (!hasWeight) blockers.push("No weight on file");
+
+  const prep = e.prep ?? { labsOnFile: false, orderVerified: false, authVerified: false };
+  if (!prep.labsOnFile) blockers.push("Labs not confirmed");
+  if (!prep.orderVerified) blockers.push("Order not verified");
+
+  if (auth.state === "expired") blockers.push("Prior auth expired");
+  else if (auth.state === "no_doses") blockers.push("No auth doses remaining");
+  else if (auth.state === "expiring") warnings.push(auth.label);
+  else if (auth.state === "none" && !prep.authVerified) warnings.push("Auth not confirmed");
+
+  const due = computeDueStatus(e.lastInfusionDate, e.doseEveryWeeks, e.date);
+  if (due.daysUntilDue !== null && due.daysUntilDue < 0) warnings.push(due.label);
+
+  return { ready: blockers.length === 0, blockers, warnings };
+}

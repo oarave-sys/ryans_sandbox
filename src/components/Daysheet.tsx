@@ -5,6 +5,8 @@ import {
 } from "../calc";
 import type { Encounter, MedLot, Patient, Regimen } from "../types";
 import { DaysheetPrint } from "./DaysheetPrint";
+import { ScanVial } from "./ScanVial";
+import type { Gs1Parsed } from "../gs1";
 
 const LAB_OPTIONS = ["CBC", "CRP", "ESR", "CMP", "Lipid panel", "TB / QuantiFERON", "Hepatitis panel"];
 
@@ -13,6 +15,7 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
   const [patient, setPatient] = useState<Patient | null>(null);
   const [regimen, setRegimen] = useState<Regimen | null>(null);
   const [saved, setSaved] = useState<"idle" | "saving" | "saved">("idle");
+  const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -70,6 +73,24 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
   }
   function addLot() { update({ lots: [...enc!.lots, { lotNo: "", exp: "", vials: undefined }] }); }
   function removeLot(i: number) { update({ lots: enc!.lots.filter((_, idx) => idx !== i) }); }
+
+  // Merge a scanned vial: bump the count if the same lot was already scanned,
+  // otherwise fill the first blank lot row or append a new one.
+  function mergeScannedVial(p: Gs1Parsed) {
+    const lots = [...enc!.lots];
+    const lotNo = p.lot ?? "";
+    const exp = p.expiryDisplay ?? "";
+    const existing = lots.findIndex((l) => l.lotNo && l.lotNo === lotNo);
+    if (existing >= 0) {
+      lots[existing] = { ...lots[existing], exp: lots[existing].exp || exp, vials: (lots[existing].vials ?? 0) + 1 };
+    } else {
+      const blank = lots.findIndex((l) => !l.lotNo && !l.exp && !l.vials);
+      const row: MedLot = { lotNo, exp, vials: 1 };
+      if (blank >= 0) lots[blank] = row;
+      else lots.push(row);
+    }
+    update({ lots });
+  }
 
   function setPremed(i: number, patch: Partial<Encounter["premedsGiven"][number]>) {
     update({ premedsGiven: enc!.premedsGiven.map((p, idx) => (idx === i ? { ...p, ...patch } : p)) });
@@ -259,7 +280,11 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
 
           {/* --- Medication lots --- */}
           <div className="sheet-section">
-            <h3>Medication lots</h3>
+            <div className="row" style={{ marginBottom: 12 }}>
+              <h3 style={{ margin: 0 }}>Medication lots</h3>
+              <div className="spacer" style={{ flex: 1 }} />
+              <button className="btn sm primary no-print" onClick={() => setScanning(true)}>⤢ Scan vial</button>
+            </div>
             {enc.lots.map((lot, i) => (
               <div className="lot-row" key={i} style={{ marginBottom: 8 }}>
                 <label className="field">Lot #
@@ -330,6 +355,8 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
           </div>
         </div>
       </div>
+
+      {scanning && <ScanVial onVial={mergeScannedVial} onClose={() => setScanning(false)} />}
     </>
   );
 }
