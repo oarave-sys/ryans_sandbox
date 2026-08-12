@@ -13,4 +13,13 @@ const singleFile = process.env.SINGLE_FILE === "1";
 export default defineConfig({
   base: "./",
   plugins: [react(), ...(singleFile ? [viteSingleFile()] : [])],
+  server: {
+    // During `npm run dev`, proxy API calls to the backend server.
+    proxy: {
+      "/api": {
+        target: process.env.API_ORIGIN || "http://localhost:8080",
+        changeOrigin: true,
+      },
+    },
+  },
 });

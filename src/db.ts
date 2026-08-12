@@ -1,33 +1,118 @@
-// Local-first persistence using Dexie (IndexedDB).
+// Client data layer — talks to the server API over same-origin fetch.
 //
-// IMPORTANT (privacy): all data stays in the browser on this device. Nothing is
-// sent to a server. This keeps the app clear of PHI transmission while the
-// workflow is being validated. A future compliant backend (e.g. Supabase with a
-// signed BAA, authentication, and audit logging) can replace this module
-// without touching the UI, because every component talks to the data layer
-// through these functions rather than to IndexedDB directly.
+// This replaces the earlier browser-only (IndexedDB) storage. It deliberately
+// keeps a small Dexie-like surface (toArray/get/add/put/update/delete/where) so
+// the UI components did not need to change when we moved from local storage to a
+// real, auditable, multi-user database. All PHI now lives in the server's
+// Postgres database, never in the browser.
 
-import Dexie, { type Table } from "dexie";
+import { revalidate, emitUnauthorized } from "./bus";
 import type { Encounter, Patient, Provider, Regimen } from "./types";
 
-export class DaysheetDB extends Dexie {
-  providers!: Table<Provider, string>;
-  patients!: Table<Patient, string>;
-  regimens!: Table<Regimen, string>;
-  encounters!: Table<Encounter, string>;
-
-  constructor() {
-    super("infusion_daysheets");
-    this.version(1).stores({
-      providers: "id, name, active",
-      patients: "id, lastName, providerId, active",
-      regimens: "id, patientId, active",
-      encounters: "id, date, patientId, regimenId, status",
-    });
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
   }
 }
 
-export const db = new DaysheetDB();
+async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method,
+    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+    credentials: "same-origin",
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 401) {
+    emitUnauthorized();
+    throw new ApiError(401, "Not authenticated");
+  }
+  if (!res.ok) {
+    let msg = res.statusText;
+    try {
+      const j = await res.json();
+      if (j?.error) msg = j.error;
+    } catch { /* ignore */ }
+    throw new ApiError(res.status, msg);
+  }
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
+
+interface Table<T extends { id: string }> {
+  toArray(): Promise<T[]>;
+  get(id: string): Promise<T | undefined>;
+  add(obj: T): Promise<string>;
+  put(obj: T): Promise<string>;
+  update(id: string, patch: Partial<T>): Promise<number>;
+  delete(id: string): Promise<void>;
+  count(): Promise<number>;
+  where(column: string): { equals(value: string): { toArray(): Promise<T[]> } };
+}
+
+function table<T extends { id: string }>(name: string): Table<T> {
+  return {
+    toArray: () => req<T[]>("GET", `/${name}`),
+    async get(id) {
+      try {
+        return await req<T>("GET", `/${name}/${encodeURIComponent(id)}`);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return undefined;
+        throw e;
+      }
+    },
+    async add(obj) {
+      await req("PUT", `/${name}/${encodeURIComponent(obj.id)}`, obj);
+      revalidate();
+      return obj.id;
+    },
+    async put(obj) {
+      await req("PUT", `/${name}/${encodeURIComponent(obj.id)}`, obj);
+      revalidate();
+      return obj.id;
+    },
+    async update(id, patch) {
+      const cur = await req<T>("GET", `/${name}/${encodeURIComponent(id)}`);
+      const next = { ...cur, ...patch };
+      await req("PUT", `/${name}/${encodeURIComponent(id)}`, next);
+      revalidate();
+      return 1;
+    },
+    async delete(id) {
+      await req("DELETE", `/${name}/${encodeURIComponent(id)}`);
+      revalidate();
+    },
+    async count() {
+      return (await req<T[]>("GET", `/${name}`)).length;
+    },
+    where(column) {
+      return {
+        equals(value) {
+          return {
+            toArray: () => req<T[]>("GET", `/${name}?${encodeURIComponent(column)}=${encodeURIComponent(value)}`),
+          };
+        },
+      };
+    },
+  };
+}
+
+export const db = {
+  providers: table<Provider>("providers"),
+  patients: table<Patient>("patients"),
+  regimens: table<Regimen>("regimens"),
+  encounters: table<Encounter>("encounters"),
+};
+
+/** Record that an encounter's daysheet was printed (for the audit trail). */
+export async function recordPrint(encounterId: string): Promise<void> {
+  try {
+    await req("POST", `/encounters/${encodeURIComponent(encounterId)}/print`);
+  } catch {
+    /* printing must never be blocked by an audit failure */
+  }
+}
 
 /** Sortable, collision-resistant id without external deps. */
 export function newId(prefix = "id"): string {
@@ -36,7 +121,7 @@ export function newId(prefix = "id"): string {
   return `${prefix}_${time}${rand}`;
 }
 
-// --- Export / import for backup and moving between devices ---
+// --- Admin backup export (JSON) --------------------------------------------
 
 export interface Backup {
   app: "infusion-daysheets";
@@ -55,38 +140,5 @@ export async function exportAll(): Promise<Backup> {
     db.regimens.toArray(),
     db.encounters.toArray(),
   ]);
-  return {
-    app: "infusion-daysheets",
-    version: 1,
-    exportedAt: Date.now(),
-    providers,
-    patients,
-    regimens,
-    encounters,
-  };
-}
-
-export async function importAll(backup: Backup, mode: "replace" | "merge"): Promise<void> {
-  if (backup.app !== "infusion-daysheets") {
-    throw new Error("This file is not an infusion-daysheets backup.");
-  }
-  await db.transaction("rw", db.providers, db.patients, db.regimens, db.encounters, async () => {
-    if (mode === "replace") {
-      await Promise.all([
-        db.providers.clear(),
-        db.patients.clear(),
-        db.regimens.clear(),
-        db.encounters.clear(),
-      ]);
-    }
-    await db.providers.bulkPut(backup.providers ?? []);
-    await db.patients.bulkPut(backup.patients ?? []);
-    await db.regimens.bulkPut(backup.regimens ?? []);
-    await db.encounters.bulkPut(backup.encounters ?? []);
-  });
-}
-
-export async function isEmpty(): Promise<boolean> {
-  const count = await db.patients.count();
-  return count === 0;
+  return { app: "infusion-daysheets", version: 1, exportedAt: Date.now(), providers, patients, regimens, encounters };
 }

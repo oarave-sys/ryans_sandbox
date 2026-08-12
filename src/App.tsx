@@ -1,21 +1,60 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Roster } from "./components/Roster";
 import { PrepWorklist } from "./components/PrepWorklist";
 import { Patients } from "./components/Patients";
 import { BackupPanel } from "./components/BackupPanel";
+import { AdminPanel } from "./components/AdminPanel";
 import { Daysheet } from "./components/Daysheet";
+import { authApi, ChangePassword, Login, useIdleLogout, type SessionUser } from "./auth";
+import { onUnauthorized } from "./bus";
+
+const IDLE_MINUTES = 15;
+
+export default function App() {
+  const [user, setUser] = useState<SessionUser | null | "loading">("loading");
+
+  useEffect(() => {
+    authApi.me().then((u) => setUser(u));
+    const off = onUnauthorized(() => setUser(null));
+    return off;
+  }, []);
+
+  if (user === "loading") {
+    return <div className="auth-screen"><div className="muted">Loading…</div></div>;
+  }
+  if (!user) {
+    return <Login onLoggedIn={setUser} />;
+  }
+  if (user.mustChangePassword) {
+    return <ChangePassword user={user} onDone={() => authApi.me().then((u) => setUser(u))} />;
+  }
+  return <AuthedApp user={user} onLoggedOut={() => setUser(null)} />;
+}
 
 type View =
   | { name: "roster" }
   | { name: "prep" }
   | { name: "patients" }
   | { name: "backup" }
+  | { name: "admin" }
   | { name: "daysheet"; encounterId: string; from: "roster" | "prep" | "patients" };
 
-export default function App() {
+function AuthedApp({ user, onLoggedOut }: { user: SessionUser; onLoggedOut: () => void }) {
   const [view, setView] = useState<View>({ name: "roster" });
+  const [changingPw, setChangingPw] = useState(false);
 
-  const go = (name: "roster" | "prep" | "patients" | "backup") => setView({ name } as View);
+  const logout = useCallback(async () => {
+    await authApi.logout();
+    onLoggedOut();
+  }, [onLoggedOut]);
+
+  useIdleLogout(IDLE_MINUTES, logout);
+
+  const go = (name: "roster" | "prep" | "patients" | "backup" | "admin") => setView({ name } as View);
+
+  if (changingPw) {
+    return <ChangePassword user={user} onDone={() => setChangingPw(false)} />;
+  }
 
   return (
     <div className="app">
@@ -37,11 +76,18 @@ export default function App() {
           <button className={view.name === "backup" ? "active" : ""} onClick={() => go("backup")}>
             Backup
           </button>
+          {user.role === "admin" && (
+            <button className={view.name === "admin" ? "active" : ""} onClick={() => go("admin")}>
+              Admin
+            </button>
+          )}
         </nav>
         <div className="spacer" />
-        <span className="privacy-pill" title="All data is stored only in this browser on this device. Nothing is sent to a server.">
-          <span className="dot" /> Local only · no data leaves this device
-        </span>
+        <div className="user-area">
+          <span className="small muted">{user.fullName || user.username} · {user.role}</span>
+          <button className="btn sm ghost" onClick={() => setChangingPw(true)}>Password</button>
+          <button className="btn sm" onClick={logout}>Sign out</button>
+        </div>
       </header>
 
       <main className="main">
@@ -54,7 +100,8 @@ export default function App() {
         {view.name === "patients" && (
           <Patients onOpenEncounter={(encounterId) => setView({ name: "daysheet", encounterId, from: "patients" })} />
         )}
-        {view.name === "backup" && <BackupPanel />}
+        {view.name === "backup" && <BackupPanel role={user.role} />}
+        {view.name === "admin" && user.role === "admin" && <AdminPanel />}
         {view.name === "daysheet" && (
           <Daysheet encounterId={view.encounterId} onBack={() => setView({ name: view.from } as View)} />
         )}

@@ -176,6 +176,21 @@ textarea { resize: vertical; min-height: 58px; }
 }
 .modal { background: var(--panel); border-radius: var(--radius); width: 100%; max-width: 560px; box-shadow: var(--shadow); max-height: 90vh; overflow: auto; }
 
+/* ---------- Auth ---------- */
+.auth-screen {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  background: var(--bg); padding: 20px;
+}
+.auth-card { width: 100%; max-width: 380px; padding: 26px; display: flex; flex-direction: column; gap: 14px; }
+
+.user-area { display: flex; align-items: center; gap: 10px; }
+
+/* ---------- Admin ---------- */
+.admin-table { width: 100%; border-collapse: collapse; }
+.admin-table th, .admin-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.admin-table th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-soft); }
+.admin-table tbody tr:hover { background: #f6f8fa; }
+
 /* ---------- Print: clean daysheet ---------- */
 .print-only { display: none; }
 @media print {

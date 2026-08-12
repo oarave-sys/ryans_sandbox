@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { db } from "../db";
+import { db, recordPrint } from "../db";
 import {
   describeDose, computeDueStatus, formatDateHuman, todayISO,
 } from "../calc";
@@ -33,7 +33,7 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
     return () => { live = false; };
   }, [encounterId]);
 
-  // Persist a partial update to both local state and IndexedDB.
+  // Persist a partial update to local state and the server.
   function update(patch: Partial<Encounter>) {
     setEnc((prev) => {
       if (!prev) return prev;
@@ -96,6 +96,11 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
     update({ premedsGiven: enc!.premedsGiven.map((p, idx) => (idx === i ? { ...p, ...patch } : p)) });
   }
 
+  function doPrint() {
+    if (enc) void recordPrint(enc.id);
+    window.print();
+  }
+
   async function markCompleted() {
     update({ status: "completed" });
     // Advance the standing order's last-infusion date so the next visit's
@@ -115,7 +120,7 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
           <button className="backlink" onClick={onBack}>← Back to roster</button>
           <div className="spacer" style={{ flex: 1 }} />
           <span className="muted small">
-            {saved === "saving" ? "Saving…" : saved === "saved" ? "All changes saved locally" : ""}
+            {saved === "saving" ? "Saving…" : saved === "saved" ? "All changes saved" : ""}
           </span>
         </div>
 
@@ -129,7 +134,7 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
               </span>
             )}
             <div className="spacer" style={{ flex: 1 }} />
-            <button className="btn sm no-print" onClick={() => window.print()}>Print</button>
+            <button className="btn sm no-print" onClick={doPrint}>Print</button>
           </div>
 
           {/* --- Visit & scheduling --- */}
@@ -348,7 +353,7 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
             <button className="btn" onClick={onBack}>Back</button>
             <div className="spacer" style={{ flex: 1 }} />
             <span className="muted small">Appt {formatDateHuman(enc.date)}{enc.date === todayISO() ? " · today" : ""}</span>
-            <button className="btn" onClick={() => window.print()}>Print</button>
+            <button className="btn" onClick={doPrint}>Print</button>
             <button className="btn primary" onClick={markCompleted} disabled={enc.status === "completed"}>
               {enc.status === "completed" ? "Completed ✓" : "Mark completed"}
             </button>

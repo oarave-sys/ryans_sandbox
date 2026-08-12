@@ -1,111 +1,99 @@
 # Infusion Daysheets
 
 A streamlined digital replacement for the paper **infusion daysheets** used in a
-rheumatology infusion center. It attacks the single biggest time sink in the
-current process: nurses hand-copying the same stable information — patient, MD,
-DX, drug, dose per kg, frequency, standing premeds, lab set — onto a fresh sheet
-for **every one of ~120–140 infusions a week**, just to get to the handful of
-fields that actually change day-of.
+rheumatology infusion center. It removes the repeated hand-copying of stable
+information (patient, MD, DX, drug, dose per kg, frequency, standing premeds,
+lab set) that nurses currently redo for **every one of ~120–140 infusions a
+week** — an estimated **500–600 hours a year** — so they only fill in what
+actually changes day-of.
 
-At that volume the clinic spends an estimated **500–600 hours a year** on these
-sheets. This app removes the repeated data entry so the nurse only fills in what
-is genuinely new each visit.
+The current process at the clinic: a daysheet template lives as a document in
+NextGen; staff copy it into Word and print one per patient, then hand-fill and
+scan it back to the chart. This app generates the sheet **already filled in**,
+prints a clean chart-ready copy, and keeps a real, auditable record — dropping
+into that existing document-based workflow with no new NextGen cost.
 
-## How it saves time
+## What it does
 
-- **Patient + regimen profiles** hold the stable data once. A regimen captures
-  the medication, dose (mg/kg or flat), frequency, standing premeds, and standing
-  labs.
-- **Daily roster** shows the whole infusion day at a glance instead of a paper
-  stack — navigate by date, see who is scheduled, who is due, and what is done.
-- **Pre-filled daysheets.** Creating a daysheet snapshots the profile so ~80% of
-  the form is already complete. The nurse fills only the day-of fields (weight,
-  IV access, lot #s, vitals, times, signatures).
-- **Automatic calculations:**
-  - Dose = current weight × mg/kg, shown live (e.g. `3 mg/kg × 70 kg = 210 mg`).
-  - "Infusion due?" is flagged automatically from the last infusion date + the
-    every-N-weeks frequency (due / overdue / due-in-N-days).
-  - Standing labs and premeds are pre-checked.
-- **Print** produces a clean, chart-ready daysheet that mirrors the paper form,
-  so it drops straight into the existing workflow.
-- **Marking a visit completed** advances the regimen's last-infusion date, so the
-  next visit's due calculation stays correct with no extra bookkeeping.
+- **Patient + regimen profiles** hold the stable data once (medication, dose
+  mg/kg or flat, frequency, standing premeds, standing labs, prior-auth).
+- **Daily roster** — the whole infusion day at a glance.
+- **Pre-filled daysheets** — creating one snapshots the profile so ~80% is
+  already complete; the nurse fills only day-of fields.
+- **Automatic calculations** — dose = weight × mg/kg (live); "infusion due?"
+  flagged from last infusion date + frequency.
+- **Prep worklist** — day-before readiness view flagging missing weight/labs,
+  unverified orders, and expiring/expired prior authorization, with a
+  Ready / needs-attention verdict per patient.
+- **Barcode vial scanning** — GS1 DataMatrix / GS1-128 parsing (USB scanner or
+  camera) auto-fills lot #, expiration, and tallies vial counts.
+- **Print** — a clean, chart-ready daysheet mirroring the paper form.
 
-Every field on the original paper daysheet has a home here: scheduling / MD
-visit, clinical review (infusion due, last INF date, labs, previous weight &
-dose), dosing, premeds, IV access (side / location / gauge / attempts / failed),
-medication lots (lot # / exp / vials), and administration & vitals (start/stop
-times, temps, weight, BP, pulse, completed by, charted by).
+## Architecture
 
-## ⚠️ Privacy / PHI — read this first
+A small self-hosted web app with three parts, designed to run **inside the
+clinic's own network** so it can hold real patient data (PHI):
 
-This build stores **all data locally in the browser on the device** (IndexedDB).
-**Nothing is sent to any server.** That is a deliberate choice: it keeps the app
-clear of PHI transmission while the workflow is being validated.
+```
+Browser (React SPA)  ──HTTPS──►  Node/Express API  ──►  PostgreSQL
+                                   • login + roles (nurse/admin)
+                                   • audit log (view/edit/print/sign-in)
+                                   • auto session timeout
+```
 
-Consequences of local-only storage:
+- `src/` — the React + TypeScript client (Vite).
+- `server/` — the Express + TypeScript API and Postgres schema.
+- `Dockerfile`, `docker-compose.yml`, `.env.example` — self-host deployment.
+- **`DEPLOY.md`** — the plain-English runbook for the clinic's IT company.
 
-- Data lives in **one browser on one device**. A different device or browser will
-  not see it. Clearing browser data deletes it.
-- Use **Backup → Export** regularly to save a JSON backup, and to move data
-  between devices.
+### PHI / compliance
 
-**Before entering any real patient information**, decide on a compliant
-deployment. A production version for real PHI needs, at minimum: a HIPAA
-Business Associate Agreement (BAA) with the hosting/database provider,
-authentication, per-user access control, audit logging, encryption at rest and
-in transit, and backups. The code is structured so the data layer (`src/db.ts`)
-can be swapped for a compliant backend (e.g. Supabase with a signed BAA) without
-rewriting the UI — every component talks to the data layer, not to storage
-directly. The seeded demo patients are tagged **(DEMO)** and are obviously fake.
+Patient data lives only in the clinic's own PostgreSQL database on a server the
+clinic controls — not in the browser, not in any outside cloud. Because no third
+party touches the data, **no BAA is required**. The app implements the
+application-level HIPAA safeguards (individual logins, roles, audit logging,
+automatic sign-off, forced password change); the clinic's IT handles TLS,
+disk encryption, backups, and network restriction — all covered in `DEPLOY.md`.
 
-## Running it
+## Run it locally (for development)
+
+Two processes: the API server (with Postgres) and the Vite dev server.
 
 ```bash
+# 1. Server — needs a Postgres database.
+cd server
 npm install
-npm run dev      # start the dev server (Vite prints the local URL)
+DATABASE_URL=postgres://USER:PASS@localhost:5432/daysheets \
+  SESSION_SECRET=dev-secret ADMIN_PASSWORD=changeme \
+  npm run dev            # API on :8080
+
+# 2. Client (in another terminal, from the repo root).
+npm install
+npm run dev              # UI on :5173, proxies /api to :8080
 ```
 
-Other scripts:
+Sign in as `admin` with the `ADMIN_PASSWORD` you set; you'll be prompted to
+change it. Create nurse accounts under **Admin → Users**.
+
+## Deploy it (for real use)
+
+See **[`DEPLOY.md`](./DEPLOY.md)**. In short, on a clinic-controlled server with
+Docker:
 
 ```bash
-npm run build    # type-check + production build into dist/
-npm run preview  # serve the production build locally
-npm run typecheck
+cp .env.example .env     # set strong secrets
+docker compose up -d --build
 ```
 
-The app seeds a few obviously-fake demo patients/regimens on first run so you can
-click around immediately. Use **Backup → Clear all data** to start empty.
-
-## Project structure
-
-```
-src/
-  types.ts               Data model (Provider, Patient, Regimen, Encounter)
-  db.ts                  Local IndexedDB persistence (Dexie) + export/import
-  calc.ts                Dose calc, due-date logic, date helpers (pure functions)
-  factory.ts             Builds a pre-filled daysheet from a patient + regimen
-  seed.ts                Demo data + common rheum medication templates
-  useLive.ts             Hook: subscribe a component to live data changes
-  App.tsx                Top-level navigation (Roster / Patients / Backup)
-  components/
-    Roster.tsx           Daily roster + "add to roster"
-    Daysheet.tsx         The full daysheet editor (live calc + due flag)
-    DaysheetPrint.tsx    Clean, chart-ready print layout
-    Patients.tsx         Patient list + regimen management
-    PatientForm.tsx      Add / edit a patient
-    RegimenForm.tsx      Add / edit a regimen (with medication templates)
-    BackupPanel.tsx      Export / import / reset local data
-```
-
-## Notes on the medication templates
+## Medication templates
 
 The bundled templates (Remicade, Rituxan, Actemra, Orencia, Benlysta, Reclast)
-provide common starting doses and frequencies as a convenience for setting up a
-regimen quickly. **They are illustrative defaults, not medical advice** — every
-value must be confirmed against each patient's actual order. All on-screen
-calculations are aids that the nurse always verifies.
+provide common starting doses/frequencies as a convenience. They are
+**illustrative defaults, not medical advice** — every value must be confirmed
+against each patient's actual order, and all on-screen calculations are aids the
+nurse verifies.
 
 ## Tech
 
-Vite + React + TypeScript, Dexie (IndexedDB). Minimal dependencies, no backend.
+React + TypeScript + Vite (client); Node + Express + PostgreSQL (server);
+sessions via `express-session`, passwords via `bcrypt`. Minimal dependencies.
