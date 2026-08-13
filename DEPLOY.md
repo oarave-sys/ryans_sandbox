@@ -167,3 +167,28 @@ docker compose down -v         # stop AND DELETE the database volume (careful!)
 - [ ] Server restricted to the clinic LAN/VPN ⬜ you configure
 - [ ] Strong secrets in `.env`, file kept private ⬜ you configure
 - [ ] Compliance owner has reviewed and signed off ⬜ clinic
+
+## Optional: on-device schedule OCR (Import Day → upload image)
+
+The **Import Day** screen can read a photo/screenshot of the day's schedule.
+OCR runs entirely in the browser (tesseract.js) — the image never leaves the
+clinic network, so it does not change the PHI/BAA posture.
+
+By default tesseract.js fetches its worker, WASM core, and English language data
+from a public CDN, which a locked-down clinic network will block. To run OCR
+fully offline, bundle those assets locally and build with them:
+
+```bash
+npm run fetch:ocr                 # populates public/ocr/ (worker, WASM core, lang data)
+VITE_OCR_ASSETS=/ocr/ npm run build
+```
+
+`fetch:ocr` copies the worker and WASM core out of `node_modules` and downloads
+the English language model (tessdata_fast, ~4 MB). On a network that proxies
+outbound HTTPS, either set `OCR_TRAINEDDATA_URL` to a reachable mirror or fetch
+`eng.traineddata` yourself and pass it via `OCR_TRAINEDDATA_FILE=/path/to/eng.traineddata`.
+The assets (~46 MB) are git-ignored — they're fetched at build time, not committed.
+
+When `VITE_OCR_ASSETS` is unset, the app falls back to the CDN (fine for
+development). Either way, the **Paste text** tab always works with no network and
+is the most reliable input.

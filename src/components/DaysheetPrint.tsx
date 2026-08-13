@@ -1,4 +1,4 @@
-import type { Encounter, Patient } from "../types";
+import type { Encounter, Patient, Regimen } from "../types";
 import type { DueStatus } from "../calc";
 import { formatDateHuman } from "../calc";
 
@@ -13,16 +13,23 @@ function blank(v?: string | number | null, min = 90) {
 }
 
 export function DaysheetPrint({
-  enc, patient, doseHint, due,
+  enc, patient, doseHint, due, regimen,
 }: {
   enc: Encounter;
   patient: Patient | null;
   doseHint: string;
   due: DueStatus | null;
+  regimen?: Regimen | null;
 }) {
-  const name = patient ? `${patient.lastName}, ${patient.firstName}` : "Unknown patient";
+  const name = patient ? `${patient.lastName}, ${patient.firstName}` : "";
+  const dob = patient?.dob ?? enc.dob ?? "";
   const labs = [...enc.labsOrdered];
   if (enc.labsOther) labs.push(enc.labsOther);
+  const isSubQ = (enc.route ?? regimen?.route) === "SubQ";
+  const gates = enc.gateResults ?? [];
+  const firstDoseItems = enc.firstDoseItems ?? regimen?.firstDoseItems ?? [];
+  const educationPoints = enc.educationPoints ?? regimen?.educationPoints ?? [];
+  const holdCriteria = enc.holdCriteria ?? regimen?.holdCriteria ?? [];
 
   return (
     <div className="print-only print-sheet">
@@ -39,13 +46,17 @@ export function DaysheetPrint({
 
       <table>
         <tbody>
-          <tr><td className="ps-label">Patient</td><td>{name}</td><td className="ps-label">MD</td><td>{enc.providerName ?? ""}</td></tr>
-          <tr><td className="ps-label">DX</td><td>{enc.diagnosis ?? ""}</td><td className="ps-label">Medication</td><td>{enc.medicationName}</td></tr>
+          <tr><td className="ps-label">Patient</td><td>{blank(name, 200)}</td><td className="ps-label">DOB</td><td>{blank(dob, 110)}</td></tr>
+          <tr><td className="ps-label">MD</td><td>{enc.providerName ?? ""}</td><td className="ps-label">DX</td><td>{blank(enc.diagnosis, 120)}</td></tr>
+          <tr><td className="ps-label">Medication</td><td colSpan={3}>{enc.medicationName}</td></tr>
           <tr>
             <td className="ps-label">MD visit needed?</td>
             <td>{chk(enc.mdVisitNeeded === "yes")} Yes&nbsp;&nbsp;{chk(enc.mdVisitNeeded === "no")} No&nbsp;&nbsp;{chk(!!enc.mdVisitSameDay)} Same day {enc.mdVisitTime ? `@ ${enc.mdVisitTime}` : ""}</td>
             <td className="ps-label">Date to schedule</td><td>{formatDateHuman(enc.dateToBeScheduled)}</td>
           </tr>
+          {enc.maxDosePerPa !== undefined && (
+            <tr><td className="ps-label">MAX DOSE per PA</td><td colSpan={3}>{blank(enc.maxDosePerPa, 120)}</td></tr>
+          )}
         </tbody>
       </table>
 
@@ -65,9 +76,28 @@ export function DaysheetPrint({
         </tbody>
       </table>
 
+      {gates.length > 0 && (
+        <>
+          <div className="ps-section">Before proceeding</div>
+          <table>
+            <tbody>
+              {gates.map((g, i) => (
+                <tr key={i}>
+                  <td className="ps-label">{g.label}</td>
+                  <td>{g.requiresValue ? <>Value {blank(g.value, 70)}&nbsp;&nbsp;</> : null}{g.requiresMdOk ? <>{chk(!!g.mdOk)} MD OK&nbsp;&nbsp;</> : null}{chk(g.cleared)} Cleared</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+
       <div className="ps-section">Dosing &amp; premeds</div>
       <table>
         <tbody>
+          {(enc.scheduleNote || enc.firstDoseNote) && (
+            <tr><td className="ps-label">Schedule</td><td colSpan={3}>{[enc.firstDoseNote, enc.scheduleNote].filter(Boolean).join(" · ")}</td></tr>
+          )}
           <tr>
             <td className="ps-label">Weight</td><td>{blank(enc.weight)} {enc.weightUnit}</td>
             <td className="ps-label">Dose</td><td>{enc.computedDose || doseHint || blank(null)}</td>
@@ -75,20 +105,27 @@ export function DaysheetPrint({
           <tr>
             <td className="ps-label">Frequency</td><td>every {blank(enc.doseEveryWeeks, 40)} weeks</td>
             <td className="ps-label">Premeds</td>
-            <td>{enc.premedsGiven.length ? enc.premedsGiven.map((p, i) => <span key={i}>{chk(p.given)} {p.name}{p.dose ? ` (${p.dose})` : ""}&nbsp;&nbsp;</span>) : "—"}</td>
+            <td>{enc.premedsGiven.length ? enc.premedsGiven.map((p, i) => <span key={i}>{chk(p.given)} {p.name}{p.dose ? ` (${p.dose})` : ""}{p.timeGiven ? ` @ ${p.timeGiven}` : ""}&nbsp;&nbsp;</span>) : "—"}</td>
           </tr>
         </tbody>
       </table>
 
-      <div className="ps-section">IV access &amp; medication lots</div>
+      <div className="ps-section">{isSubQ ? "Injection" : "IV access"} &amp; medication lots</div>
       <table>
         <tbody>
-          <tr>
-            <td className="ps-label">IV site</td>
-            <td>{enc.iv.side || "R/L"} · {enc.iv.location || "FA/AC/Hand/Wrist"} · {enc.iv.gauge ? `${enc.iv.gauge} g` : "22/24 g"}</td>
-            <td className="ps-label"># attempts / failed</td>
-            <td>{blank(enc.iv.attempts, 40)} &nbsp; {chk(enc.iv.failed)} failed</td>
-          </tr>
+          {isSubQ ? (
+            <tr>
+              <td className="ps-label">Injection site</td>
+              <td colSpan={3}>{blank(enc.injectionSite, 200)}</td>
+            </tr>
+          ) : (
+            <tr>
+              <td className="ps-label">IV site</td>
+              <td>{enc.iv.side || "R/L"} · {enc.iv.location || "FA/AC/Hand/Wrist"} · {enc.iv.gauge ? `${enc.iv.gauge} g` : "22/24 g"}</td>
+              <td className="ps-label"># attempts / failed</td>
+              <td>{blank(enc.iv.attempts, 40)} &nbsp; {chk(enc.iv.failed)} failed</td>
+            </tr>
+          )}
           {enc.lots.map((lot, i) => (
             <tr key={i}>
               <td className="ps-label">Lot #</td><td>{blank(lot.lotNo)}</td>
@@ -109,6 +146,12 @@ export function DaysheetPrint({
             <td className="ps-label">Stop time</td><td>{blank(enc.stopTime)}</td>
             <td className="ps-label">Ending temp</td><td>{blank(enc.endTemp)}</td>
           </tr>
+          {enc.observationMinutes !== undefined && (
+            <tr>
+              <td className="ps-label">Observation ({enc.observationMinutes || "—"} min)</td><td>End {blank(enc.observationEnd, 60)}</td>
+              <td className="ps-label">Last temp</td><td>{blank(enc.lastTemp)}</td>
+            </tr>
+          )}
           <tr>
             <td className="ps-label">Vitals time</td><td>{blank(enc.vitalsTime)}</td>
             <td className="ps-label">BP / P</td><td>{blank(enc.bp, 60)} · {blank(enc.pulse, 40)}</td>
@@ -119,6 +162,40 @@ export function DaysheetPrint({
           </tr>
         </tbody>
       </table>
+
+      {enc.tracksBoneHealth && (
+        <>
+          <div className="ps-section">Bone health</div>
+          <table>
+            <tbody>
+              <tr>
+                <td className="ps-label">Last DEXA</td><td>{blank(enc.dexaDate, 90)}</td>
+                <td className="ps-label">Calcium</td><td>{blank(enc.calciumValue, 70)}</td>
+              </tr>
+              <tr>
+                <td className="ps-label">Note to provider (order if due)</td>
+                <td colSpan={3}>{chk(enc.noteToProviderSent === "yes")} Yes&nbsp;&nbsp;{chk(enc.noteToProviderSent === "no")} No</td>
+              </tr>
+            </tbody>
+          </table>
+        </>
+      )}
+
+      {firstDoseItems.length > 0 && (
+        <div className="ps-ref"><b>1st dose — review / explain:</b>
+          <ul>{firstDoseItems.map((t, i) => <li key={i}>{t}</li>)}</ul>
+        </div>
+      )}
+      {educationPoints.length > 0 && (
+        <div className="ps-ref"><b>Ongoing education:</b>
+          <ul>{educationPoints.map((t, i) => <li key={i}>{t}</li>)}</ul>
+        </div>
+      )}
+      {holdCriteria.length > 0 && (
+        <div className="ps-ref"><b>Hold if:</b>
+          <ul>{holdCriteria.map((t, i) => <li key={i}>{t}</li>)}</ul>
+        </div>
+      )}
 
       {enc.notes && <p><b>Notes:</b> {enc.notes}</p>}
     </div>

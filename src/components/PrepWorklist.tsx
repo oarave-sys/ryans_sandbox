@@ -85,7 +85,7 @@ export function PrepWorklist({ onOpen }: { onOpen: (encounterId: string) => void
                   <div className="enc-time" style={{ width: 56 }}>{enc.apptTime || "—"}</div>
                   <div className="grow">
                     <div className="name" style={{ fontWeight: 700 }}>
-                      {patient ? `${patient.lastName}, ${patient.firstName}` : "Unknown patient"}
+                      {patient ? `${patient.lastName}, ${patient.firstName}` : "Unassigned (blank patient)"}
                     </div>
                     <div className="sub muted small">{enc.medicationName}{enc.providerName ? ` · ${enc.providerName}` : ""}</div>
 

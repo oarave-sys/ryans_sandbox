@@ -22,9 +22,17 @@ into that existing document-based workflow with no new NextGen cost.
   already complete; the nurse fills only day-of fields.
 - **Automatic calculations** — dose = weight × mg/kg (live); "infusion due?"
   flagged from last infusion date + frequency.
+- **Import day** — paste the day's schedule (or upload a screenshot, read by
+  on-device OCR), match each row to a drug template, review, and **generate every
+  pre-filled daysheet in one pass**, then **print the whole stack**.
+- **Reusable drug blocks** — templates are composed from shared blocks (loading
+  schedule, first-dose/rate split, proceed gates, premed timing, SubQ +
+  observation window, bone-agent education/hold packet) so adding a drug means
+  turning blocks on, not building a new form.
 - **Prep worklist** — day-before readiness view flagging missing weight/labs,
-  unverified orders, and expiring/expired prior authorization, with a
-  Ready / needs-attention verdict per patient.
+  unverified orders, expiring/expired prior authorization, and any un-cleared
+  drug-specific **proceed gate** (e.g. CrCL &gt; 35, uric acid + MD OK, G6PD),
+  with a Ready / needs-attention verdict per patient.
 - **Barcode vial scanning** — GS1 DataMatrix / GS1-128 parsing (USB scanner or
   camera) auto-fills lot #, expiration, and tallies vial counts.
 - **Print** — a clean, chart-ready daysheet mirroring the paper form.
@@ -87,11 +95,15 @@ docker compose up -d --build
 
 ## Medication templates
 
-The bundled templates (Remicade, Rituxan, Actemra, Orencia, Benlysta, Reclast)
-provide common starting doses/frequencies as a convenience. They are
-**illustrative defaults, not medical advice** — every value must be confirmed
-against each patient's actual order, and all on-screen calculations are aids the
-nurse verifies.
+The bundled templates cover the infusion/injection formulary — Actemra,
+Benlysta, Cimzia, Cosentyx, Evenity, Ilaris, Krystexxa, Ocrevus, Orencia,
+Prolia, Reclast, Remicade, plus Renflexis, Simponi Aria, and Rituxan seen on the
+schedule. They provide each drug's **structure** (route, schedule shape, safety
+gates, premed protocol, monitoring/hold text) and its visit frequency. **Clinical
+dose amounts and gate thresholds are intentionally left blank** for staff to
+enter and confirm against each patient's actual order. Templates are
+**illustrative structure, not medical advice**, and all on-screen calculations
+are aids the nurse verifies.
 
 ## Tech
 

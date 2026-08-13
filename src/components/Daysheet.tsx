@@ -24,8 +24,8 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
       if (!live || !e) return;
       setEnc(e);
       const [p, r] = await Promise.all([
-        db.patients.get(e.patientId),
-        db.regimens.get(e.regimenId),
+        e.patientId ? db.patients.get(e.patientId) : Promise.resolve(undefined),
+        e.regimenId ? db.regimens.get(e.regimenId) : Promise.resolve(undefined),
       ]);
       setPatient(p ?? null);
       setRegimen(r ?? null);
@@ -60,7 +60,11 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
     );
   }
 
-  const patientName = patient ? `${patient.lastName}, ${patient.firstName}` : "Unknown patient";
+  const patientName = patient ? `${patient.lastName}, ${patient.firstName}` : "New daysheet";
+  const refFirstDose = enc.firstDoseItems ?? regimen?.firstDoseItems ?? [];
+  const refEducation = enc.educationPoints ?? regimen?.educationPoints ?? [];
+  const refHold = enc.holdCriteria ?? regimen?.holdCriteria ?? [];
+  const injectionSiteOptions = regimen?.injectionSites ?? enc.injectionSites ?? ["R Abd", "L Abd", "R thigh", "L thigh"];
 
   function toggleLab(lab: string) {
     const has = enc!.labsOrdered.includes(lab);
@@ -96,6 +100,11 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
     update({ premedsGiven: enc!.premedsGiven.map((p, idx) => (idx === i ? { ...p, ...patch } : p)) });
   }
 
+  function setGate(i: number, patch: Partial<NonNullable<Encounter["gateResults"]>[number]>) {
+    const gateResults = (enc!.gateResults ?? []).map((g, idx) => (idx === i ? { ...g, ...patch } : g));
+    update({ gateResults });
+  }
+
   function doPrint() {
     if (enc) void recordPrint(enc.id);
     window.print();
@@ -113,7 +122,7 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
   return (
     <>
       {/* Printable version (hidden on screen, shown when printing) */}
-      <DaysheetPrint enc={enc} patient={patient} doseHint={doseHint} due={due} />
+      <DaysheetPrint enc={enc} patient={patient} doseHint={doseHint} due={due} regimen={regimen} />
 
       <div className="screen-only">
         <div className="row no-print" style={{ marginBottom: 12 }}>
@@ -153,6 +162,9 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
               <label className="field">DX
                 <input type="text" value={enc.diagnosis ?? ""} onChange={(e) => update({ diagnosis: e.target.value })} />
               </label>
+              <label className="field">DOB
+                <input type="date" value={enc.dob ?? ""} onChange={(e) => update({ dob: e.target.value })} />
+              </label>
             </div>
             <div className="grid cols-4" style={{ marginTop: 12 }}>
               <label className="field">MD visit needed?
@@ -188,7 +200,12 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
                 <input type="date" value={enc.lastInfusionDate ?? ""} onChange={(e) => update({ lastInfusionDate: e.target.value })} />
               </label>
               <div className="field">Schedule
-                {due && <div className={`dueflag ${due.due ? (due.daysUntilDue !== null && due.daysUntilDue < 0 ? "overdue" : "due") : "ok"}`}>{due.label}{due.dueDate ? ` · next due ${formatDateHuman(due.dueDate)}` : ""}</div>}
+                {due && (
+                  <div className={`dueflag ${due.due ? (due.daysUntilDue !== null && due.daysUntilDue < 0 ? "overdue" : "due") : "ok"}`}>
+                    {due.label}{due.dueDate ? ` · next due ${formatDateHuman(due.dueDate)}` : ""}
+                    {due.sinceLabel && <div className="small" style={{ fontWeight: 400, marginTop: 2 }}>{due.sinceLabel}</div>}
+                  </div>
+                )}
               </div>
             </div>
             <div style={{ marginTop: 14 }}>
@@ -215,9 +232,44 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
             </div>
           </div>
 
+          {/* --- Before proceeding (drug-specific gates) --- */}
+          {(enc.gateResults?.length ?? 0) > 0 && (
+            <div className="sheet-section">
+              <h3>Before proceeding</h3>
+              {enc.gateResults!.map((g, i) => (
+                <div key={i} className={`gate-row ${g.cleared ? "ok" : "open"}`} style={{ marginBottom: 8 }}>
+                  <div className="grow">
+                    <div style={{ fontWeight: 600 }}>{g.label}</div>
+                    <div className="row" style={{ gap: 14, marginTop: 6, flexWrap: "wrap" }}>
+                      {g.requiresValue && (
+                        <label className="field" style={{ margin: 0 }}>Value
+                          <input type="text" value={g.value ?? ""} onChange={(e) => setGate(i, { value: e.target.value })} style={{ width: 130 }} />
+                        </label>
+                      )}
+                      {g.requiresMdOk && (
+                        <label className="checkline small">
+                          <input type="checkbox" checked={!!g.mdOk} onChange={(e) => setGate(i, { mdOk: e.target.checked })} /> MD okayed to proceed
+                        </label>
+                      )}
+                      <label className="checkline small">
+                        <input type="checkbox" checked={g.cleared} onChange={(e) => setGate(i, { cleared: e.target.checked })} /> Cleared
+                      </label>
+                    </div>
+                  </div>
+                  <span className={`badge ${g.cleared ? "ok" : "overdue"}`}>{g.cleared ? "Cleared ✓" : "Not cleared"}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* --- Dosing --- */}
           <div className="sheet-section">
             <h3>Dosing</h3>
+            {(enc.scheduleNote || enc.firstDoseNote) && (
+              <p className="muted small" style={{ marginTop: -4, marginBottom: 10 }}>
+                {[enc.firstDoseNote, enc.scheduleNote].filter(Boolean).join(" · ")}
+              </p>
+            )}
             <div className="grid cols-4">
               <label className="field">Current weight
                 <input type="number" value={enc.weight ?? ""} onChange={(e) => update({ weight: numOrUndef(e.target.value) })} />
@@ -234,9 +286,16 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
                 <div className="calcbox">{doseHint || "—"}</div>
               </div>
             </div>
-            <label className="field" style={{ marginTop: 12 }}>Charted dose {regimen ? `(${regimen.route ?? "IV"})` : ""}
-              <input type="text" value={enc.computedDose ?? ""} onChange={(e) => update({ computedDose: e.target.value })} placeholder={doseHint || "e.g. 210 mg"} />
-            </label>
+            <div className="grid cols-2" style={{ marginTop: 12 }}>
+              <label className="field">Charted dose {regimen ? `(${regimen.route ?? "IV"})` : ""}
+                <input type="text" value={enc.computedDose ?? ""} onChange={(e) => update({ computedDose: e.target.value })} placeholder={doseHint || "e.g. 210 mg"} />
+              </label>
+              {enc.maxDosePerPa !== undefined && (
+                <label className="field">MAX DOSE per PA
+                  <input type="text" value={enc.maxDosePerPa} onChange={(e) => update({ maxDosePerPa: e.target.value })} placeholder="per prior auth" />
+                </label>
+              )}
+            </div>
             {regimen?.administrationNote && <p className="muted small" style={{ marginTop: 6 }}>{regimen.administrationNote}</p>}
           </div>
 
@@ -244,17 +303,35 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
           <div className="sheet-section">
             <h3>Premeds given</h3>
             {enc.premedsGiven.length === 0 && <p className="muted small">No standing premeds on this regimen.</p>}
-            <div className="chalso">
-              {enc.premedsGiven.map((p, i) => (
-                <span className="checkline" key={i}>
+            {enc.premedsGiven.map((p, i) => (
+              <div className="row" key={i} style={{ gap: 12, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <label className="checkline">
                   <input type="checkbox" checked={p.given} onChange={(e) => setPremed(i, { given: e.target.checked })} />
                   {p.name}{p.dose ? ` · ${p.dose}` : ""}
-                </span>
-              ))}
-            </div>
+                </label>
+                {p.timing && <span className="muted small">{p.timing}</span>}
+                <div className="spacer" style={{ flex: 1 }} />
+                <label className="field" style={{ margin: 0 }}>Time given
+                  <input type="time" value={p.timeGiven ?? ""} onChange={(e) => setPremed(i, { timeGiven: e.target.value })} style={{ width: 130 }} />
+                </label>
+              </div>
+            ))}
           </div>
 
-          {/* --- IV access --- */}
+          {/* --- IV access / Injection (route-dependent) --- */}
+          {(enc.route ?? regimen?.route) === "SubQ" ? (
+          <div className="sheet-section">
+            <h3>Injection</h3>
+            <div className="grid cols-2">
+              <label className="field">Injection site
+                <select value={enc.injectionSite ?? ""} onChange={(e) => update({ injectionSite: e.target.value })}>
+                  <option value="">—</option>
+                  {injectionSiteOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </label>
+            </div>
+          </div>
+          ) : (
           <div className="sheet-section">
             <h3>IV access</h3>
             <div className="grid cols-4">
@@ -282,6 +359,7 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
               IV site failed
             </span>
           </div>
+          )}
 
           {/* --- Medication lots --- */}
           <div className="sheet-section">
@@ -336,6 +414,16 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
                 <input type="text" value={enc.pulse ?? ""} onChange={(e) => update({ pulse: e.target.value })} />
               </label>
             </div>
+            {enc.observationMinutes !== undefined && (
+              <div className="grid cols-2" style={{ marginTop: 12 }}>
+                <label className="field">Observation end {enc.observationMinutes ? `(${enc.observationMinutes} min)` : ""}
+                  <input type="time" value={enc.observationEnd ?? ""} onChange={(e) => update({ observationEnd: e.target.value })} />
+                </label>
+                <label className="field">Last temp
+                  <input type="text" value={enc.lastTemp ?? ""} onChange={(e) => update({ lastTemp: e.target.value })} placeholder="°F" />
+                </label>
+              </div>
+            )}
             <div className="grid cols-2" style={{ marginTop: 12 }}>
               <label className="field">Infusion completed by
                 <input type="text" value={enc.completedBy ?? ""} onChange={(e) => update({ completedBy: e.target.value })} />
@@ -348,6 +436,48 @@ export function Daysheet({ encounterId, onBack }: { encounterId: string; onBack:
               <textarea value={enc.notes ?? ""} onChange={(e) => update({ notes: e.target.value })} />
             </label>
           </div>
+
+          {/* --- Bone health (Prolia / Evenity / Reclast) --- */}
+          {enc.tracksBoneHealth && (
+            <div className="sheet-section">
+              <h3>Bone health</h3>
+              <div className="grid cols-3">
+                <label className="field">Last DEXA
+                  <input type="date" value={enc.dexaDate ?? ""} onChange={(e) => update({ dexaDate: e.target.value })} />
+                </label>
+                <label className="field">Calcium value
+                  <input type="text" value={enc.calciumValue ?? ""} onChange={(e) => update({ calciumValue: e.target.value })} />
+                </label>
+                <label className="field">Note to provider (order if due)
+                  <select value={enc.noteToProviderSent ?? ""} onChange={(e) => update({ noteToProviderSent: e.target.value as Encounter["noteToProviderSent"] })}>
+                    <option value="">—</option><option value="yes">Yes</option><option value="no">No</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* --- Reference text (education / hold / 1st dose) --- */}
+          {(refFirstDose.length + refEducation.length + refHold.length) > 0 && (
+            <div className="sheet-section">
+              <h3>Reference</h3>
+              {refFirstDose.length > 0 && (
+                <div className="refblock"><b>1st dose — review / explain</b>
+                  <ul>{refFirstDose.map((t, i) => <li key={i}>{t}</li>)}</ul>
+                </div>
+              )}
+              {refEducation.length > 0 && (
+                <div className="refblock"><b>Ongoing education</b>
+                  <ul>{refEducation.map((t, i) => <li key={i}>{t}</li>)}</ul>
+                </div>
+              )}
+              {refHold.length > 0 && (
+                <div className="refblock"><b>Hold if</b>
+                  <ul>{refHold.map((t, i) => <li key={i}>{t}</li>)}</ul>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="sticky-actions no-print">
             <button className="btn" onClick={onBack}>Back</button>

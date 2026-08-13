@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Roster } from "./components/Roster";
 import { PrepWorklist } from "./components/PrepWorklist";
 import { Patients } from "./components/Patients";
+import { ImportDay } from "./components/ImportDay";
+import { BatchPrint } from "./components/BatchPrint";
 import { BackupPanel } from "./components/BackupPanel";
 import { AdminPanel } from "./components/AdminPanel";
 import { Daysheet } from "./components/Daysheet";
@@ -34,10 +36,12 @@ export default function App() {
 type View =
   | { name: "roster" }
   | { name: "prep" }
+  | { name: "import" }
+  | { name: "printday"; date: string }
   | { name: "patients" }
   | { name: "backup" }
   | { name: "admin" }
-  | { name: "daysheet"; encounterId: string; from: "roster" | "prep" | "patients" };
+  | { name: "daysheet"; encounterId: string; from: "roster" | "prep" | "patients" | "import" };
 
 function AuthedApp({ user, onLoggedOut }: { user: SessionUser; onLoggedOut: () => void }) {
   const [view, setView] = useState<View>({ name: "roster" });
@@ -50,7 +54,7 @@ function AuthedApp({ user, onLoggedOut }: { user: SessionUser; onLoggedOut: () =
 
   useIdleLogout(IDLE_MINUTES, logout);
 
-  const go = (name: "roster" | "prep" | "patients" | "backup" | "admin") => setView({ name } as View);
+  const go = (name: "roster" | "prep" | "import" | "patients" | "backup" | "admin") => setView({ name } as View);
 
   if (changingPw) {
     return <ChangePassword user={user} onDone={() => setChangingPw(false)} />;
@@ -69,6 +73,9 @@ function AuthedApp({ user, onLoggedOut }: { user: SessionUser; onLoggedOut: () =
           </button>
           <button className={view.name === "prep" ? "active" : ""} onClick={() => go("prep")}>
             Prep Worklist
+          </button>
+          <button className={view.name === "import" || view.name === "printday" ? "active" : ""} onClick={() => go("import")}>
+            Import Day
           </button>
           <button className={view.name === "patients" ? "active" : ""} onClick={() => go("patients")}>
             Patients &amp; Regimens
@@ -96,6 +103,12 @@ function AuthedApp({ user, onLoggedOut }: { user: SessionUser; onLoggedOut: () =
         )}
         {view.name === "prep" && (
           <PrepWorklist onOpen={(encounterId) => setView({ name: "daysheet", encounterId, from: "prep" })} />
+        )}
+        {view.name === "import" && (
+          <ImportDay onPrintDay={(date) => setView({ name: "printday", date })} />
+        )}
+        {view.name === "printday" && (
+          <BatchPrint date={view.date} onBack={() => setView({ name: "import" })} />
         )}
         {view.name === "patients" && (
           <Patients onOpenEncounter={(encounterId) => setView({ name: "daysheet", encounterId, from: "patients" })} />

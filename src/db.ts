@@ -98,12 +98,53 @@ function table<T extends { id: string }>(name: string): Table<T> {
   };
 }
 
-export const db = {
-  providers: table<Provider>("providers"),
-  patients: table<Patient>("patients"),
-  regimens: table<Regimen>("regimens"),
-  encounters: table<Encounter>("encounters"),
-};
+// --- Demo mode: fully in-browser, no server. Built with VITE_DEMO=1 so a
+// clickable standalone build can run inside a sandboxed page. Gated so normal
+// builds are unaffected (the branch is dead-code-eliminated). ---
+const DEMO = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_DEMO === "1";
+
+function memTable<T extends { id: string }>(store: Map<string, T>): Table<T> {
+  return {
+    async toArray() { return [...store.values()]; },
+    async get(id) { return store.get(id); },
+    async add(obj) { store.set(obj.id, obj); revalidate(); return obj.id; },
+    async put(obj) { store.set(obj.id, obj); revalidate(); return obj.id; },
+    async update(id, patch) {
+      const cur = store.get(id);
+      if (!cur) return 0;
+      store.set(id, { ...cur, ...patch });
+      revalidate();
+      return 1;
+    },
+    async delete(id) { store.delete(id); revalidate(); },
+    async count() { return store.size; },
+    where(column) {
+      return {
+        equals(value) {
+          return {
+            async toArray() {
+              return [...store.values()].filter((o) => String((o as Record<string, unknown>)[column]) === String(value));
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
+export const db = DEMO
+  ? {
+      providers: memTable<Provider>(new Map()),
+      patients: memTable<Patient>(new Map()),
+      regimens: memTable<Regimen>(new Map()),
+      encounters: memTable<Encounter>(new Map()),
+    }
+  : {
+      providers: table<Provider>("providers"),
+      patients: table<Patient>("patients"),
+      regimens: table<Regimen>("regimens"),
+      encounters: table<Encounter>("encounters"),
+    };
 
 /** Record that an encounter's daysheet was printed (for the audit trail). */
 export async function recordPrint(encounterId: string): Promise<void> {
