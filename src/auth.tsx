@@ -17,18 +17,26 @@ async function post(path: string, body?: unknown): Promise<Response> {
   });
 }
 
+// Demo build (VITE_DEMO=1) runs with no server, so auth is a no-op that keeps
+// the user "signed in" as a demo admin.
+const DEMO = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_DEMO === "1";
+const DEMO_USER: SessionUser = { id: "demo", username: "demo", fullName: "Demo Nurse", role: "admin", mustChangePassword: false };
+
 export const authApi = {
   async me(): Promise<SessionUser | null> {
+    if (DEMO) return DEMO_USER;
     const res = await fetch("/api/auth/me", { credentials: "same-origin" });
     if (!res.ok) return null;
     return (await res.json()).user as SessionUser;
   },
   async login(username: string, password: string): Promise<SessionUser> {
+    if (DEMO) return DEMO_USER;
     const res = await post("/auth/login", { username, password });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Login failed");
     return (await res.json()).user as SessionUser;
   },
   async logout(): Promise<void> {
+    if (DEMO) return;
     await post("/auth/logout");
   },
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {
