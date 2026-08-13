@@ -86,7 +86,14 @@ export function Roster({ onOpen }: { onOpen: (encounterId: string) => void }) {
               const due = computeDueStatus(enc.lastInfusionDate, enc.doseEveryWeeks, enc.date);
               const complete = isEncounterComplete(enc);
               return (
-                <div className="enc-card" key={enc.id}>
+                <div
+                  className="enc-card clickable"
+                  key={enc.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onOpen(enc.id)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(enc.id); } }}
+                >
                   <div className="enc-time">{enc.apptTime || "—"}</div>
                   <div className="enc-main">
                     <div className="name">
@@ -110,8 +117,8 @@ export function Roster({ onOpen }: { onOpen: (encounterId: string) => void }) {
                     ) : (
                       <span className="badge">Scheduled</span>
                     )}
-                    <button className="btn sm primary" onClick={() => onOpen(enc.id)}>Open daysheet</button>
-                    <button className="btn sm danger" onClick={() => removeEncounter(enc.id)} aria-label="Remove">✕</button>
+                    <button className="btn sm primary" onClick={(e) => { e.stopPropagation(); onOpen(enc.id); }}>Open daysheet</button>
+                    <button className="btn sm danger" onClick={(e) => { e.stopPropagation(); removeEncounter(enc.id); }} aria-label="Remove">✕</button>
                   </div>
                 </div>
               );
