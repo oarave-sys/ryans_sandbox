@@ -188,6 +188,14 @@ export const MED_TEMPLATES: MedTemplate[] = [
     premeds: [TYLENOL_PM], standingLabs: LABS_FULL,
   },
   {
+    medicationName: "Infliximab (Remicade) — every 5 weeks",
+    aliases: ["Remicade Q5", "Remicade Q5 weeks", "Remicade Q5wk", "Remicade q5wks"],
+    doseMode: "per_kg", doseValue: 0, doseUnit: "mg", frequencyWeeks: 5,
+    route: "IV", maxDosePerPa: "",
+    scheduleNote: "at 0, 2, 6 weeks then every 5 weeks",
+    premeds: [TYLENOL_PM], standingLabs: LABS_FULL,
+  },
+  {
     medicationName: "Infliximab-abda (Renflexis)",
     aliases: ["Renflexis"],
     doseMode: "per_kg", doseValue: 0, doseUnit: "mg", frequencyWeeks: 8,
@@ -250,13 +258,19 @@ export function templateToRegimenFields(
 export function matchTemplate(raw: string): MedTemplate | null {
   const q = raw.trim().toLowerCase();
   if (!q) return null;
-  let best: { t: MedTemplate; len: number } | null = null;
+  // Prefer an exact name/alias match over a substring one, so a plain
+  // "Remicade" resolves to the base template and not to "Remicade Q5"; among
+  // matches of the same kind, the longest needle wins (e.g. "Simponi Aria"
+  // beats a bare "Simponi").
+  let best: { t: MedTemplate; len: number; exact: boolean } | null = null;
   for (const t of MED_TEMPLATES) {
     const needles = [t.medicationName, ...(t.aliases ?? [])];
     for (const n of needles) {
       const nl = n.toLowerCase();
-      if (q === nl || q.includes(nl) || nl.includes(q)) {
-        if (!best || nl.length > best.len) best = { t, len: nl.length };
+      const exact = q === nl;
+      if (exact || q.includes(nl) || nl.includes(q)) {
+        const better = !best || (exact && !best.exact) || (exact === best.exact && nl.length > best.len);
+        if (better) best = { t, len: nl.length, exact };
       }
     }
   }
